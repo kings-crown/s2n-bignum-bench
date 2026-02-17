@@ -1,0 +1,7 @@
+{
+  "program_state":600,
+  "bit_vector":600,
+  "generic":1200,
+  "functional_correctness_x86":7200,
+  "functional_correctness_arm":7200
+}

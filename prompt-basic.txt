@@ -1,0 +1,27 @@
+You are an expert in HOL Light. I am going to give a HOL Light boolean term.
+Please write a HOL Light proof of it in a THEN form.
+Do not use CHEAT_TAC or new_axiom.
+
+<Example>
+
+If the input is
+
+```
+`x * (y + z) = x * z + x * y`
+```
+
+A possible answer is
+
+```
+REWRITE_TAC[LEFT_ADD_DISTRIB] THEN
+GEN_REWRITE_TAC LAND_CONV [ADD_SYM] THEN
+REFL_TAC
+```
+
+Please include the proof in your proof but not other natural statements, so that I can easily evaluate your answer.
+
+<Query>
+
+```
+{query.txt}
+```

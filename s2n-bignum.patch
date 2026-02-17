@@ -1,0 +1,55 @@
+diff --git a/tools/build-proof.sh b/tools/build-proof.sh
+index 39d72433..8d5a579e 100755
+--- a/tools/build-proof.sh
++++ b/tools/build-proof.sh
+@@ -53,13 +53,48 @@ inlined_ml="${inlined_prefix}.ml"
+ inlined_cmx="${inlined_prefix}.cmx"
+ ocaml ${HOLLIGHT_DIR}/inline_load.ml ${template_ml} ${inlined_ml}
+ 
++# Original name of this file
++ml_basename=`basename "$ml_path_noarch"`
++if [ -z "${TOPLEVEL_THMS_DIR:-}" ]; then
++  TOPLEVEL_THMS_DIR="${HOLLIGHT_DIR}/../toplevel-thms/${s2n_bignum_arch}"
++fi
++mkdir -p "${TOPLEVEL_THMS_DIR}"
++
++# Collect top-level thms, with the actual line number informations
++${TACLOGGER_DIR}/get-ast.sh ${inlined_ml}
++${TACLOGGER_DIR}/tracer collect-toplevel-thms \
++    ${inlined_ml%.ml}.marshalled.bin \
++    ${TOPLEVEL_THMS_DIR}/${ml_basename%.ml}.json
++rm ${inlined_ml%.ml}.marshalled.bin ${inlined_ml%.ml}.mli
++
++# Collect top-level thms, with the line number informations removed.
++python3 ${TACLOGGER_DIR}/remove-linenum-dirs.py \
++    ${inlined_ml} \
++    ${TOPLEVEL_THMS_DIR}/${ml_basename}
++${TACLOGGER_DIR}/get-ast.sh ${TOPLEVEL_THMS_DIR}/${ml_basename}
++${TACLOGGER_DIR}/tracer collect-toplevel-thms \
++    ${TOPLEVEL_THMS_DIR}/${ml_basename%.ml}.marshalled.bin \
++    ${TOPLEVEL_THMS_DIR}/${ml_basename%.ml}.nolinenum.json
++rm ${TOPLEVEL_THMS_DIR}/${ml_basename%.ml}.marshalled.bin \
++    ${TOPLEVEL_THMS_DIR}/${ml_basename%.ml}.mli
++
++# Instrument the proof with exportTrace hooks and choose dump destinations.
++wrapped_ml="${inlined_prefix}.wrapped.ml"
++if [ -z "${TRACE_DUMP_DIR:-}" ]; then
++  TRACE_DUMP_DIR="${HOLLIGHT_DIR}/../trace-logs/${s2n_bignum_arch}"
++fi
++mkdir -p "${TRACE_DUMP_DIR}"
++dump_dir="${TRACE_DUMP_DIR}/${ml_basename%.ml}"
++mkdir -p "${dump_dir}"
++${TACLOGGER_DIR}/modify-proof.sh ${inlined_ml} ${wrapped_ml} "${dump_dir}"
++
+ # Give a large stack size.
+ OCAMLRUNPARAM=l=2000000000 \
+ ocamlopt.byte -pp "$(${hol_sh_cmd} -pp)" -I "${HOLLIGHT_DIR}" -I +unix -c \
+-    hol_lib.cmxa ${inlined_ml} -o ${inlined_cmx} -w -a
++    hol_lib.cmxa ${wrapped_ml} -o ${inlined_cmx} -w -a
+ ocamlfind ocamlopt -package zarith,unix -linkpkg hol_lib.cmxa \
+     -I "${HOLLIGHT_DIR}" ${inlined_cmx} \
+     -o "${output_path}"
+ 
+ # Remove the intermediate files to save disk space
+-rm ${inlined_cmx} ${template_ml} ${inlined_ml}
++rm ${inlined_cmx} ${template_ml} ${inlined_ml} ${wrapped_ml} ${wrapped_ml}.org
