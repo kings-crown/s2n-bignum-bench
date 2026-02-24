@@ -86,9 +86,17 @@ def contains_anykw(keywords: Sequence[str], text: str) -> bool:
 def categorize(thm_name: str, goal: str, proof: str, toplevel_dir: str) -> tuple[bool, str]:
   """Classify a theorem, returning (drop?, classification or reason)."""
 
-  if not goal.startswith("`"):
-    assert not goal.endswith("`")
+  # Normalise the goal so it starts (and ends) with the backtick-delimited term.
+  # Some theorems don't necessarily start with the backtick-delimited term, e.g., they may start with "(`" or "(`\n", etc.
+  # so the first character is '(' rather than '`'. So we count the backticks and extract the substring between the first and last backticks.
+  goal = goal.strip()
+  first_backtick = goal.find("`")
+  last_backtick = goal.rfind("`")
+  if first_backtick == -1 or last_backtick == -1 or first_backtick == last_backtick:
     return True, "the goal is evaluated at runtime"
+
+  if first_backtick != 0 or last_backtick != len(goal) - 1:
+    goal = goal[first_backtick : last_backtick + 1]
   if "_EQUIV" in thm_name or "SUBROUTINE_SAFE" in thm_name:
     return True, "not a proof related to functional correctness"
   if "SUBROUTINE_CORRECT" in thm_name:
