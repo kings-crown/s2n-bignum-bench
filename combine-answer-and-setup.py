@@ -118,8 +118,9 @@ def write_query_and_answer(f, problem_name, judge_output_path):
 
   assert category in timeouts, f"{category} not in timeouts.json"
 
+  # Wrap the query so higher-order expressions stay a single bench_run arg
   f.write(
-      f'bench_run "{problem_name}" {query} (fun () -> {answer}) '
+      f'bench_run "{problem_name}" ({query}) (fun () -> {answer}) '
       f'"{judge_output_path}" {timeouts[category]};;\n\n'
   )
 

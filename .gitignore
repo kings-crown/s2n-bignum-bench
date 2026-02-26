@@ -6,3 +6,8 @@ objfiles/x86/
 ml_files/
 problems.json
 problems/
+eval-*
+log-eval-*
+template-cache.json
+*.csv
+*.txt
