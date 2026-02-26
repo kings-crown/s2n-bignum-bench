@@ -83,10 +83,10 @@ elif [ -d s2n-bignum ]; then
 fi
 
 if [ ! -d s2n-bignum ]; then
-  git clone https://github.com/awslabs/s2n-bignum.git
+  git clone https://github.com/kings-crown/s2n-bignum.git
 fi
 cd s2n-bignum
-git checkout 002fdb0174a0e1b4f82911e01566d02c70284d58
+git checkout a652b60ec89986f46dc0845193f7fbd11b60fb83
 
 
 # A. Prepare object files
@@ -97,6 +97,13 @@ rm -rf "$OBJFILES_DIR"
 mkdir -p "$OBJFILES_DIR"
 
 make -j${NUM_CORES}
+
+# Not all .S files are in the default location the unoptimized files are under */unopt/ (e.g. fastmul/p256/p384/p521).
+if [ "$arch" = "arm" ]; then
+  make unopt -j${NUM_CORES}
+fi
+
+# Copy all produced objects (including unopt) into objfiles tree
 find . -name "*.o" -exec cp --parents {} "$OBJFILES_DIR" \;
 if [ "$arch" == "x86" ]; then
   make winobj -j${NUM_CORES}
