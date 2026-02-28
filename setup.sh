@@ -86,7 +86,7 @@ if [ ! -d s2n-bignum ]; then
   git clone https://github.com/kings-crown/s2n-bignum.git
 fi
 cd s2n-bignum
-git checkout a652b60ec89986f46dc0845193f7fbd11b60fb83
+git checkout 9912d17e251519de0591b351d9020031c6715101
 
 
 # A. Prepare object files
