@@ -77,11 +77,12 @@ python3 collect-verdicts.py eval-<timestamp> results.csv
 
 
 ## Maintainers
-- Juneyoung Lee — contact via GitHub (@aqjune-aws)
 - Balaji Rao 
+- Juneyoung Lee — contact via GitHub (@aqjune)
+
 
 ## Acknowledgements
-[Juneyoung Lee](https://github.com/aqjune-aws) was instrumental in building this project. He developed the scripts to collect, tag, and build the problem set, and later engineered the obfuscation and assessment logic that were appropriated for the Pass@K NTP attempts. His contributions were foundational.
+[Juneyoung Lee](https://github.com/aqjune) was instrumental in building this project. He guided the process of collecting, tagging, and building the problem set, and later helped with the obfuscation. The main assessment logic has been appropriated for the Pass@K NTP attempts.
 
 ## Repository contents (quick reference)
 - `problems/`, `problems.json` — generated corpus (may be absent until you run `collect-problems.py`).
