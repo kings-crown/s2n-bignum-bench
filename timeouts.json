@@ -1,7 +1,7 @@
 {
-  "program_state":2400,
-  "bit_vector":600,
-  "generic":1200,
+  "program_state":7200,
+  "bit_vector":7200,
+  "generic":7200,
   "functional_correctness_x86":7200,
   "functional_correctness_arm":7200
 }
