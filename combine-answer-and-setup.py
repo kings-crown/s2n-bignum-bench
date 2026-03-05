@@ -2,6 +2,7 @@ import hashlib
 import json
 import multiprocessing
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -289,7 +290,12 @@ if __name__ == '__main__':
     answered_problems.setdefault(category, []).append(prob_id)
 
     with open(answ_path, "r", encoding='utf-8') as answer_file:
-      answers[prob_id] = "".join(list(answer_file.readlines()))
+      raw = answer_file.read()
+      # Strip markdown code fences (```hol, ```ocaml, etc.) if present
+      m = re.match(r'\s*```\w*\s?(.*)', raw, re.DOTALL)
+      if m and raw.rstrip().endswith("```"):
+        raw = m.group(1).rstrip()[:-3].strip() + "\n"
+      answers[prob_id] = raw
 
   generate_grader(num_cores)
   save_template_cache()
