@@ -1,5 +1,13 @@
 """Collect top-level theorems into benchmark-ready problem definitions."""
 
+"""
+Stable IDs(with the .N suffixes for collisions) - with a growing project, 
+the {linenum} part of the original ID is not stable, 
+so we assign IDs based on the theorem name and file name.
+The original 4-part ID is recorded in the "legacy_id" field
+of each problem entry, so we can trace back to the original theorem if needed.
+"""
+
 import argparse
 import json
 import os
@@ -10,14 +18,19 @@ verbose = False
 quiet_mode = False
 
 # A problem type is a dict
-# key: the name of the theoreom
-# - Actually, this is "{top-level dir name}.{line number}.{theorem name}".
+# key: a stable problem identifier of the form "{arch}.{filename}.{theorem_name}".
+#   For the rare cases where the same theorem name appears more than once in the
+#   same file, a 0-based occurrence index is appended: "{arch}.{filename}.{thm}.{N}".
 # value: is another dict
 # - "query": the HOL Light query
 # - "category": the category
 # - "json": the original JSON entry
+# - "legacy_id": the original 4-part ID "{arch}.{filename}.{linenum}.{theorem_name}"
 
 problems: dict[str, dict] = dict()
+
+# Maps each base name to the list of problem keys assigned for it, for dupe detection.
+_name_keys: dict[str, list[str]] = dict()
 
 def adjust_line_col_nums(
     lines: Sequence[str], linenum_end: int, colnum_end: int
@@ -244,9 +257,11 @@ def process_json(
     assert(filename.endswith(".ml")), filename
     filename = filename.removesuffix(".ml")
 
-    # The identifier of this problem.
+    # The stable identifier for this problem: {arch}.{filename}.{theorem_name}.
+    # For collisions (same name in same file), an occurrence index is appended.
     toplevel_thm_linenum = json_data[idx]["toplevel_theorem_linenum_start"]
-    problem_name = f'{toplevel_dir}.{filename}.{toplevel_thm_linenum}.{thm_name}'
+    legacy_id = f'{toplevel_dir}.{filename}.{toplevel_thm_linenum}.{thm_name}'
+    base_name = f'{toplevel_dir}.{filename}.{thm_name}'
 
     # The goal.
     query = extract_string(ml_lines,
@@ -255,58 +270,98 @@ def process_json(
         int(itm["goal_linenum_end"]),
         int(itm["goal_colnum_end"]))
 
-    if problem_name in problems:
-      prev_entry = problems[problem_name]
-      if prev_entry["json"] != json_data[idx]:
-        print(f"{problem_name}: JSON information mismatch.")
-        print(f'- Previous one: {prev_entry["json"]}')
-        print(f'- New one: {json_data[idx]}')
-        exit(1)
-      elif prev_entry["query"] != query:
-        print(f"{problem_name}: The query field mismatch.")
-        print(f'- Previous one: {prev_entry["query"]}')
-        print(f'- New one: {query}')
-        exit(1)
+    # Check if this is a duplicate of an already-seen problem (same theorem
+    # appearing in a different inlined file) by scanning all keys assigned to
+    # this base_name for a JSON + query match.
+    assigned_keys = _name_keys.get(base_name, [])
+    duplicate_key = None
+    for key in assigned_keys:
+      if key in problems:
+        entry = problems[key]
+        if entry["json"] == json_data[idx] and entry["query"] == query:
+          duplicate_key = key
+          break
 
-      # (the inlined file path, the line num/column num, etc)
+    if duplicate_key is not None:
+      # Same theorem from a different inlined file — just add the location.
       line_shift = line_shifts[idx]
       linenum_in_cheat_ml = itm["toplevel_theorem_linenum_start"] - line_shift
-      prev_entry["inlined_locations"].append(
+      problems[duplicate_key]["inlined_locations"].append(
           (output_cheat_path, linenum_in_cheat_ml))
     else:
-      # For categorization. :)
-      proof = extract_string(ml_lines,
-          int(itm["proof_linenum_start"]),
-          int(itm["proof_colnum_start"]),
-          int(itm["proof_linenum_end"]),
-          int(itm["proof_colnum_end"]))
-
-      drop_this, category = categorize(thm_name, query, proof, toplevel_dir)
-
-      if drop_this:
-        if not quiet_mode:
-          print(f"{problem_name}: Drop this theorem; why: {category}")
-
+      # Assign a (possibly suffixed) problem name for a genuinely new theorem.
+      n = len(assigned_keys)
+      if n == 0:
+        problem_name = base_name
+        _name_keys[base_name] = [problem_name]
+      elif n == 1:
+        # Second distinct theorem: retroactively rename the first to .0
+        first_key = assigned_keys[0]
+        first_entry = problems.pop(first_key)
+        new_first_key = f'{base_name}.0'
+        problems[new_first_key] = first_entry
+        assigned_keys[0] = new_first_key
+        problem_name = f'{base_name}.1'
+        assigned_keys.append(problem_name)
       else:
-        if category in category_stats:
-          category_stats[category] += 1
-        else:
-          category_stats[category] = 1
+        problem_name = f'{base_name}.{n}'
+        assigned_keys.append(problem_name)
 
-        if not quiet_mode:
-          print(f"{problem_name}")
-          print(f"- Query: {query}")
-          print(f"- Category: {category}")
+      # This should not happen after collision-aware naming, but keep the
+      # safety check for unexpected duplicates.
+      if problem_name in problems:
+        prev_entry = problems[problem_name]
+        if prev_entry["json"] != json_data[idx]:
+          print(f"{problem_name}: JSON information mismatch.")
+          print(f'- Previous one: {prev_entry["json"]}')
+          print(f'- New one: {json_data[idx]}')
+          exit(1)
+        elif prev_entry["query"] != query:
+          print(f"{problem_name}: The query field mismatch.")
+          print(f'- Previous one: {prev_entry["query"]}')
+          print(f'- New one: {query}')
+          exit(1)
 
+        # (the inlined file path, the line num/column num, etc)
         line_shift = line_shifts[idx]
         linenum_in_cheat_ml = itm["toplevel_theorem_linenum_start"] - line_shift
+        prev_entry["inlined_locations"].append(
+            (output_cheat_path, linenum_in_cheat_ml))
+      else:
+        # For categorization. :)
+        proof = extract_string(ml_lines,
+            int(itm["proof_linenum_start"]),
+            int(itm["proof_colnum_start"]),
+            int(itm["proof_linenum_end"]),
+            int(itm["proof_colnum_end"]))
 
-        problems[problem_name] = {
-            "json": json_data[idx],
-            "category": category,
-            "query": query,
-            "inlined_locations": [(output_cheat_path, linenum_in_cheat_ml)],
-        }
+        drop_this, category = categorize(thm_name, query, proof, toplevel_dir)
+
+        if drop_this:
+          if not quiet_mode:
+            print(f"{problem_name}: Drop this theorem; why: {category}")
+
+        else:
+          if category in category_stats:
+            category_stats[category] += 1
+          else:
+            category_stats[category] = 1
+
+          if not quiet_mode:
+            print(f"{problem_name}")
+            print(f"- Query: {query}")
+            print(f"- Category: {category}")
+
+          line_shift = line_shifts[idx]
+          linenum_in_cheat_ml = itm["toplevel_theorem_linenum_start"] - line_shift
+
+          problems[problem_name] = {
+              "json": json_data[idx],
+              "category": category,
+              "query": query,
+              "legacy_id": legacy_id,
+              "inlined_locations": [(output_cheat_path, linenum_in_cheat_ml)],
+          }
 
 
 if __name__ == '__main__':
