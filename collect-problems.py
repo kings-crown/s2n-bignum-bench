@@ -297,10 +297,12 @@ def process_json(
       elif n == 1:
         # Second distinct theorem: retroactively rename the first to .0
         first_key = assigned_keys[0]
-        first_entry = problems.pop(first_key)
-        new_first_key = f'{base_name}.0'
-        problems[new_first_key] = first_entry
-        assigned_keys[0] = new_first_key
+        if first_key in problems:
+          first_entry = problems.pop(first_key)
+          new_first_key = f'{base_name}.0'
+          problems[new_first_key] = first_entry
+          assigned_keys[0] = new_first_key
+        # else: first theorem was dropped, no rename needed
         problem_name = f'{base_name}.1'
         assigned_keys.append(problem_name)
       else:
