@@ -1,6 +1,8 @@
+import argparse
 import csv
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -36,12 +38,16 @@ def collect_verdicts(evaldir_path):
       verdicts[probname] = verdict
 
 if __name__ == '__main__':
-  if len(sys.argv) != 3:
-    print("python3 collect-verdicts.py <eval dir> <output.csv>")
-    exit(1)
+  parser = argparse.ArgumentParser(
+      description="Collect judge verdicts from an eval directory into a CSV.")
+  parser.add_argument("evaldir", help="Path to eval-<timestamp> directory")
+  parser.add_argument("output_csv", help="Output CSV path")
+  parser.add_argument("--clean", action="store_true",
+      help="Remove the eval directory (and its log-eval-*.txt) after writing the CSV")
+  args = parser.parse_args()
 
-  path = sys.argv[1]
-  csvout_path = sys.argv[2]
+  path = args.evaldir
+  csvout_path = args.output_csv
 
   curdir = Path(__file__).parent.resolve()
   problems_json_path = os.path.join(curdir, "problems.json")
@@ -71,3 +77,15 @@ if __name__ == '__main__':
     ks = sorted(list(verdicts_count.keys()))
     for k in ks:
       w.writerow([k, str(verdicts_count[k])])
+
+  if args.clean:
+    eval_path = Path(path).resolve()
+    # Remove corresponding log-eval-*.txt (matches the timestamp in the dir name)
+    eval_name = eval_path.name  # e.g. "eval-20250305-123456"
+    timestamp = eval_name.removeprefix("eval-")
+    log_file = eval_path.parent / f"log-{eval_name}.txt"
+    if log_file.exists():
+      log_file.unlink()
+      print(f"Removed {log_file}")
+    shutil.rmtree(eval_path)
+    print(f"Removed {eval_path}")
