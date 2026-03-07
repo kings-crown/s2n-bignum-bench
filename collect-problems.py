@@ -1,4 +1,4 @@
-"""Collect top-level theorems into benchmark-ready problem definitions."""
+"""Collect unique top-level theorems into benchmark-ready problem definitions."""
 
 """
 Stable IDs(with the .N suffixes for collisions) - with a growing project, 
@@ -31,6 +31,14 @@ problems: dict[str, dict] = dict()
 
 # Maps each base name to the list of problem keys assigned for it, for dupe detection.
 _name_keys: dict[str, list[str]] = dict()
+
+# Maps normalised query text to the problem key that first introduced it,
+# so that identical goals from different files are not double-counted.
+_query_to_key: dict[str, str] = dict()
+
+# Normalised queries of dropped theorems, to avoid duplicating them in the
+# dropped report.
+_dropped_queries: set[str] = set()
 
 def adjust_line_col_nums(
     lines: Sequence[str], linenum_end: int, colnum_end: int
@@ -107,9 +115,9 @@ def categorize(thm_name: str, goal: str, proof: str, toplevel_dir: str) -> tuple
   last_backtick = goal.rfind("`")
   if first_backtick == -1 or last_backtick == -1 or first_backtick == last_backtick:
     return True, "the goal is evaluated at runtime"
-
   if first_backtick != 0 or last_backtick != len(goal) - 1:
     goal = goal[first_backtick : last_backtick + 1]
+    
   if "_EQUIV" in thm_name or "SUBROUTINE_SAFE" in thm_name:
     return True, "not a proof related to functional correctness"
   if "SUBROUTINE_CORRECT" in thm_name:
@@ -165,6 +173,7 @@ def get_toplevel_dir(path: str) -> str:
 
 
 category_stats: dict[str, int] = dict()
+dropped_problems: list[dict] = []
 
 def process_json(
     mlfile_path: str,
@@ -270,9 +279,30 @@ def process_json(
         int(itm["goal_linenum_end"]),
         int(itm["goal_colnum_end"]))
 
-    # Check if this is a duplicate of an already-seen problem (same theorem
-    # appearing in a different inlined file) by scanning all keys assigned to
-    # this base_name for a JSON + query match.
+    # Dedup step 1: cross-file dedup by query text.
+    # If the exact same goal was already kept under any problem key,
+    # just record this as an additional inlined location and move on.
+
+    normalised_query = " ".join(query.split())
+    if normalised_query in _query_to_key:
+      existing_key = _query_to_key[normalised_query]
+      line_shift = line_shifts[idx]
+      linenum_in_cheat_ml = itm["toplevel_theorem_linenum_start"] - line_shift
+      # existing_key is always valid: _query_to_key is only populated when
+      # a problem is inserted into `problems`, and entries are never removed.
+      assert existing_key in problems, \
+          f"_query_to_key points to {existing_key!r} which is not in problems"
+      problems[existing_key]["inlined_locations"].append(
+          (output_cheat_path, linenum_in_cheat_ml))
+      if not quiet_mode:
+        print(f"{base_name}: cross-file duplicate of {existing_key}, merging")
+      continue
+    if normalised_query in _dropped_queries:
+      if not quiet_mode:
+        print(f"{base_name}: cross-file duplicate of a dropped theorem, skipping")
+      continue
+
+    # Dedup step 2: same base_name, same JSON + query (same theorem seen from a different inlined file).
     assigned_keys = _name_keys.get(base_name, [])
     duplicate_key = None
     for key in assigned_keys:
@@ -283,18 +313,22 @@ def process_json(
           break
 
     if duplicate_key is not None:
-      # Same theorem from a different inlined file — just add the location.
       line_shift = line_shifts[idx]
       linenum_in_cheat_ml = itm["toplevel_theorem_linenum_start"] - line_shift
       problems[duplicate_key]["inlined_locations"].append(
           (output_cheat_path, linenum_in_cheat_ml))
+      continue
+
+    # New theorem: assign a collision-aware problem name.
+    # Names are never renamed after insertion — the .0/.1/… suffix is
+    # determined up front so that _query_to_key never goes stale.
+
+    n_existing = len(assigned_keys)
+    if n_existing == 0:
+      problem_name = base_name
+      _name_keys[base_name] = [problem_name]
     else:
-      # Assign a (possibly suffixed) problem name for a genuinely new theorem.
-      n = len(assigned_keys)
-      if n == 0:
-        problem_name = base_name
-        _name_keys[base_name] = [problem_name]
-      elif n == 1:
+      if n_existing == 1:
         # Second distinct theorem: retroactively rename the first to .0
         first_key = assigned_keys[0]
         if first_key in problems:
@@ -302,68 +336,55 @@ def process_json(
           new_first_key = f'{base_name}.0'
           problems[new_first_key] = first_entry
           assigned_keys[0] = new_first_key
+          # Keep _query_to_key in sync with the rename.
+          first_nq = " ".join(first_entry["query"].split())
+          if _query_to_key.get(first_nq) == first_key:
+            _query_to_key[first_nq] = new_first_key
         # else: first theorem was dropped, no rename needed
-        problem_name = f'{base_name}.1'
-        assigned_keys.append(problem_name)
+      problem_name = f'{base_name}.{n_existing}'
+      assigned_keys.append(problem_name)
+
+    # Categorize and either drop or insert.
+    proof = extract_string(ml_lines,
+        int(itm["proof_linenum_start"]),
+        int(itm["proof_colnum_start"]),
+        int(itm["proof_linenum_end"]),
+        int(itm["proof_colnum_end"]))
+
+    drop_this, category = categorize(thm_name, query, proof, toplevel_dir)
+
+    if drop_this:
+      dropped_problems.append({
+          "problem_id": problem_name,
+          "reason": category,
+          "query": query,
+          "legacy_id": legacy_id,
+      })
+      _dropped_queries.add(normalised_query)
+      if not quiet_mode:
+        print(f"{problem_name}: Drop this theorem; why: {category}")
+    else:
+      if category in category_stats:
+        category_stats[category] += 1
       else:
-        problem_name = f'{base_name}.{n}'
-        assigned_keys.append(problem_name)
+        category_stats[category] = 1
 
-      # This should not happen after collision-aware naming, but keep the
-      # safety check for unexpected duplicates.
-      if problem_name in problems:
-        prev_entry = problems[problem_name]
-        if prev_entry["json"] != json_data[idx]:
-          print(f"{problem_name}: JSON information mismatch.")
-          print(f'- Previous one: {prev_entry["json"]}')
-          print(f'- New one: {json_data[idx]}')
-          exit(1)
-        elif prev_entry["query"] != query:
-          print(f"{problem_name}: The query field mismatch.")
-          print(f'- Previous one: {prev_entry["query"]}')
-          print(f'- New one: {query}')
-          exit(1)
+      if not quiet_mode:
+        print(f"{problem_name}")
+        print(f"- Query: {query}")
+        print(f"- Category: {category}")
 
-        # (the inlined file path, the line num/column num, etc)
-        line_shift = line_shifts[idx]
-        linenum_in_cheat_ml = itm["toplevel_theorem_linenum_start"] - line_shift
-        prev_entry["inlined_locations"].append(
-            (output_cheat_path, linenum_in_cheat_ml))
-      else:
-        # For categorization. :)
-        proof = extract_string(ml_lines,
-            int(itm["proof_linenum_start"]),
-            int(itm["proof_colnum_start"]),
-            int(itm["proof_linenum_end"]),
-            int(itm["proof_colnum_end"]))
+      line_shift = line_shifts[idx]
+      linenum_in_cheat_ml = itm["toplevel_theorem_linenum_start"] - line_shift
 
-        drop_this, category = categorize(thm_name, query, proof, toplevel_dir)
-
-        if drop_this:
-          if not quiet_mode:
-            print(f"{problem_name}: Drop this theorem; why: {category}")
-
-        else:
-          if category in category_stats:
-            category_stats[category] += 1
-          else:
-            category_stats[category] = 1
-
-          if not quiet_mode:
-            print(f"{problem_name}")
-            print(f"- Query: {query}")
-            print(f"- Category: {category}")
-
-          line_shift = line_shifts[idx]
-          linenum_in_cheat_ml = itm["toplevel_theorem_linenum_start"] - line_shift
-
-          problems[problem_name] = {
-              "json": json_data[idx],
-              "category": category,
-              "query": query,
-              "legacy_id": legacy_id,
-              "inlined_locations": [(output_cheat_path, linenum_in_cheat_ml)],
-          }
+      problems[problem_name] = {
+          "json": json_data[idx],
+          "category": category,
+          "query": query,
+          "legacy_id": legacy_id,
+          "inlined_locations": [(output_cheat_path, linenum_in_cheat_ml)],
+      }
+      _query_to_key[normalised_query] = problem_name
 
 
 if __name__ == '__main__':
@@ -371,6 +392,8 @@ if __name__ == '__main__':
       prog='collect-problems.py',
       description="Collects the problems from top-level theorems dumped by 'make build_proofs' from s2n-bignum")
   parser.add_argument('--quiet', action='store_true', help='suppress per-problem logging')
+  parser.add_argument('--dropped-json', default=None,
+                      help='path to write a JSON report of dropped theorems')
   parser.add_argument('input_dir')
   parser.add_argument('output_json')
   parser.add_argument('output_ml_dir')
@@ -411,5 +434,9 @@ if __name__ == '__main__':
 
   if not quiet_mode:
     print(category_stats)
+    print(f"Dropped: {len(dropped_problems)} theorems")
   with open(args.output_json, 'w', encoding="utf-8") as f:
     json.dump(problems, f, indent=2)
+  if args.dropped_json:
+    with open(args.dropped_json, 'w', encoding="utf-8") as f:
+      json.dump(dropped_problems, f, indent=2)
