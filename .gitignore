@@ -3,11 +3,11 @@ objfiles/.DS_Store
 toplevel-thms/
 objfiles/arm/
 objfiles/x86/
-ml_files/
-problems.json
-problems/
+ml_files*/
+problems*.json
+problems*/
 eval-*
 log-eval-*
-template-cache.json
+*.json
 *.csv
 *.txt
