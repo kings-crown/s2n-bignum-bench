@@ -292,8 +292,10 @@ def process_json(
       # a problem is inserted into `problems`, and entries are never removed.
       assert existing_key in problems, \
           f"_query_to_key points to {existing_key!r} which is not in problems"
-      problems[existing_key]["inlined_locations"].append(
-          (output_cheat_path, linenum_in_cheat_ml))
+      existing_arch = existing_key.split('.')[0]
+      if arch == existing_arch or existing_arch == 'common':
+        problems[existing_key]["inlined_locations"].append(
+            (output_cheat_path, linenum_in_cheat_ml))
       if not quiet_mode:
         print(f"{base_name}: cross-file duplicate of {existing_key}, merging")
       continue
@@ -315,8 +317,10 @@ def process_json(
     if duplicate_key is not None:
       line_shift = line_shifts[idx]
       linenum_in_cheat_ml = itm["toplevel_theorem_linenum_start"] - line_shift
-      problems[duplicate_key]["inlined_locations"].append(
-          (output_cheat_path, linenum_in_cheat_ml))
+      dup_arch = duplicate_key.split('.')[0]
+      if arch == dup_arch or dup_arch == 'common':
+        problems[duplicate_key]["inlined_locations"].append(
+            (output_cheat_path, linenum_in_cheat_ml))
       continue
 
     # New theorem: assign a collision-aware problem name.
@@ -434,6 +438,7 @@ if __name__ == '__main__':
 
   if not quiet_mode:
     print(category_stats)
+    print(f"Total: {sum(category_stats.values())}")
     print(f"Dropped: {len(dropped_problems)} theorems")
   with open(args.output_json, 'w', encoding="utf-8") as f:
     json.dump(problems, f, indent=2)
