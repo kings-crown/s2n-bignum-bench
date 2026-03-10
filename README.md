@@ -117,7 +117,8 @@ Creates `eval-<timestamp>/`, runs syntax checks (`synchk.sh`), and reuses `templ
 ./run-answers-bytecode.sh eval-<timestamp> <cores>
 ```
  - Per-problem compile/run logs live next to each generated `.ml` inside `eval-<timestamp>/`.
- - Edit `timeouts.json` to adjust limits, depending on how good/bad your proofs are; the compute requirements will vary.
+ - We have provided a suggested per-problem timeout map that can be used to ensure that the evaluation time does not become unreasonable.
+ - Edit `timeouts.json` to adjust limits (if that is preferred), depending on how good/bad your proofs are; the compute requirements will vary.
  - We suggest conservative parallelism numbers.
  - Repeated eval runs take up lots of disk space. Please be mindful.
 
