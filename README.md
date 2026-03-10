@@ -116,10 +116,10 @@ Creates `eval-<timestamp>/`, runs syntax checks (`synchk.sh`), and reuses `templ
 # or if native ocamlopt is unavailable:
 ./run-answers-bytecode.sh eval-<timestamp> <cores>
 ```
-Per-problem compile/run logs live next to each generated `.ml` inside `eval-<timestamp>/`.
-Edit `timeouts.json` to adjust limits, depending on how good/bad your proofs are; the compute requirements will vary.
-We suggest conservative parallelism numbers.
-Repeated eval runs take up lots of disk space. Please be mindful.
+ - Per-problem compile/run logs live next to each generated `.ml` inside `eval-<timestamp>/`.
+ - Edit `timeouts.json` to adjust limits, depending on how good/bad your proofs are; the compute requirements will vary.
+ - We suggest conservative parallelism numbers.
+ - Repeated eval runs take up lots of disk space. Please be mindful.
 
 ### Collect verdicts
 ```
