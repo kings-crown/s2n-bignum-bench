@@ -1,5 +1,56 @@
 # s2n-bignum-bench
 
+A practical benchmark for evaluating low-level code reasoning of LLMs through HOL Light tactic synthesis on cryptographic proofs from AWS [s2n-bignum](https://github.com/awslabs/s2n-bignum).
+
+[Paper]() | [Leaderboard](https://kings-crown.github.io/s2n-bignum-leaderboard/) | [GUIDE.md](GUIDE.md)
+
+## Quick Start for Challengers
+
+Each problem gives you a HOL Light goal (a boolean term) and asks for a tactic proof. Here's an example:
+
+**Goal:**
+```
+`x * (y + z) = x * z + x * y`
+```
+
+**Expected answer** — a HOL Light tactic chain:
+```
+REWRITE_TAC[LEFT_ADD_DISTRIB] THEN
+GEN_REWRITE_TAC LAND_CONV [ADD_SYM] THEN
+REFL_TAC
+```
+
+The full workflow:
+
+```bash
+# 1. Clone and set up (builds HOL Light + s2n-bignum, ~20 GB disk, ~1hr)
+git clone https://github.com/kings-crown/s2n-bignum-bench
+cd s2n-bignum-bench
+./setup.sh arm 4        # then: ./setup.sh --reuse x86 4
+python3 collect-problems.py toplevel-thms/ problems.json ml_files
+
+# 2. Retrieve problems as a CSV for your LLM
+python3 retrieve-problem.py retrieve --outputdir workdir --csv problems.csv --csv-only
+
+# 3. Have your model generate answers (one per problem)
+#    Output format: CSV with columns problem_id, category, query, answer
+
+# 4. Evaluate answers
+python3 retrieve-problem.py retrieve --outputdir workdir
+#    Place each answer in workdir/<problem-id>/answer.txt
+python3 combine-answer-and-setup.py workdir 8
+./run-answers.sh eval-<timestamp> 8
+python3 collect-verdicts.py eval-<timestamp> results.csv
+
+# 5. Submit to the leaderboard
+#    Zip your answers CSV and submit at:
+#    https://github.com/kings-crown/s2n-bignum-leaderboard/issues/new?template=leaderboard-submission.yml
+```
+
+See [GUIDE.md](GUIDE.md) for detailed instructions, checkpointed assessment (Pass@K), obfuscation, and debugging.
+
+---
+
 ## Preparation
 
 ### 1. Build HOL Light, s2n-bignum, and collect top-level theorems
