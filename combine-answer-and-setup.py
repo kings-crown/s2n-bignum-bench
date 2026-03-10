@@ -11,6 +11,7 @@ from pathlib import Path
 problems = dict()
 
 timeouts = dict()
+timeout_map = dict()  # per-problem timeouts from timeout-map.json
 
 # Category -> problems
 answered_problems = dict()
@@ -43,15 +44,19 @@ let bench_run (problem_name:string) (query:term) (tac0:unit->tactic)
               (output_txt_path:string) (timeout:int) =
   let oc = open_out output_txt_path in
   let axioms_before = axioms() in
-  (try
-    let tac:tactic = tac0 () in
-    let _:thm = s2n_bignum_bench_timed_fun prove (query, tac) timeout in
-    let axioms_after = axioms() in
-    output_string oc (
-      if axioms_before = axioms_after then "OK" else "CHEATING")
-  with Failure _ -> output_string oc "FAIL"
-  | S2n_bignum_bench_timeout -> output_string oc "TIMEOUT"
-  | _ -> output_string oc "ERROR");
+  let t0 = Unix.gettimeofday () in
+  let verdict =
+    (try
+      let tac:tactic = tac0 () in
+      let _:thm = s2n_bignum_bench_timed_fun prove (query, tac) timeout in
+      let axioms_after = axioms() in
+      if axioms_before = axioms_after then "OK" else "CHEATING"
+    with Failure _ -> "FAIL"
+    | S2n_bignum_bench_timeout -> "TIMEOUT"
+    | _ -> "ERROR") in
+  let elapsed = Unix.gettimeofday () -. t0 in
+  Printf.printf "PROFILE %s %.3f %s\n%!" problem_name elapsed verdict;
+  output_string oc verdict;
   close_out oc;;
 
 """
@@ -119,10 +124,13 @@ def write_query_and_answer(f, problem_name, judge_output_path):
 
   assert category in timeouts, f"{category} not in timeouts.json"
 
+  # Per-problem timeout from timeout-map.json, falling back to category timeout
+  timeout = timeout_map.get(problem_name, timeouts[category])
+
   # Wrap the query so higher-order expressions stay a single bench_run arg
   f.write(
       f'bench_run "{problem_name}" ({query}) (fun () -> {answer}) '
-      f'"{judge_output_path}" {timeouts[category]};;\n\n'
+      f'"{judge_output_path}" {timeout};;\n\n'
   )
 
 
@@ -191,6 +199,26 @@ def build_templates(answ_problems_list):
   return templates
 
 
+def write_template_ml(template_path, template_lines, entries, output_path, evaldir, logf):
+  """Write a single .ml file for a set of problems."""
+  logf.write(f"{output_path} includes:\n")
+
+  prevline = 0
+  with open(output_path, "w", encoding='utf-8') as out_file:
+    for index, (problem_name, linenum) in enumerate(entries):
+      for line in template_lines[prevline:linenum]:
+        out_file.write(line)
+
+      if index == 0:
+        out_file.write(bench_run_code)
+
+      judge_output_path = os.path.join("..", evaldir, f"{problem_name}.judge.txt")
+      write_query_and_answer(out_file, problem_name, judge_output_path)
+      logf.write(f"  {problem_name}\n")
+
+      prevline = linenum
+
+
 def generate_grader(num_cores):
   global evaldir
 
@@ -235,23 +263,8 @@ def generate_grader(num_cores):
 
       output_filename = template_path.replace("/", "_")
       output_path = os.path.join(evaldir, output_filename)
-
-      logf.write(f"{output_path} includes:\n")
-
-      prevline = 0
-      with open(output_path, "w", encoding='utf-8') as out_file:
-        for index, (problem_name, linenum) in enumerate(entries):
-          for line in template_lines[prevline:linenum]:
-            out_file.write(line)
-
-          if index == 0:
-            out_file.write(bench_run_code)
-
-          judge_output_path = os.path.join("..", evaldir, f"{problem_name}.judge.txt")
-          write_query_and_answer(out_file, problem_name, judge_output_path)
-          logf.write(f"  {problem_name}\n")
-
-          prevline = linenum
+      write_template_ml(template_path, template_lines, entries,
+                        output_path, evaldir, logf)
 
   print(evaldir)
 
@@ -265,6 +278,13 @@ if __name__ == '__main__':
   timeouts_json_path = os.path.join(curdir, "timeouts.json")
   with open(timeouts_json_path, "r", encoding='utf-8') as f:
     timeouts = json.load(f)
+
+  timeout_map_path = os.path.join(curdir, "timeout-map.json")
+  if os.path.exists(timeout_map_path):
+    with open(timeout_map_path, "r", encoding='utf-8') as f:
+      for entry in json.load(f):
+        timeout_map[entry["problem_id"]] = entry["timeout_sec"]
+    print(f"Loaded per-problem timeouts for {len(timeout_map)} problems from timeout-map.json")
 
   load_template_cache()
 
