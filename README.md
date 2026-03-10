@@ -129,7 +129,7 @@ python3 collect-verdicts.py eval-<timestamp> results.csv
 
 ## Maintainers
 - Balaji Rao 
-- Juneyoung Lee — contact via GitHub (@aqjune)
+- Juneyoung Lee — contact via GitHub [@aqjune](https://github.com/aqjune)
 
 
 ## Acknowledgements
