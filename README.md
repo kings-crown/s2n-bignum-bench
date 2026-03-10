@@ -74,7 +74,7 @@ python3 collect-problems.py [--quiet] toplevel-thms/ problems.json ml_files
 ```
 - Produces `problems.json` (corpus metadata) and `ml_files/<arch>/` with `CHEAT_TAC` placeholders.
 
-### 3. (Optional) Obfuscate the problems
+### 3. (Optional) Obfuscate the problems -- Work in Progress
 ```
 python3 run-obfuscation.py problems.json <cores> problems-obfuscated.json
 mv problems.json problems-unobfuscated.json
@@ -87,13 +87,13 @@ mv problems-obfuscated.json problems.json
 ### Assessment modes
 There are two supported assessment workflows:
 
-1. **Checkpointed assessment (best for Pass@K or many retries)**  
-   - Build checkpoints with `create_checkpoint.py`, then evaluate with `assess_answer.py --batch-run-dir ...` using the generated manifest.  
-   - This amortizes HOL Light startup and loading costs across many candidate answers, which is especially effective when you are testing multiple attempts per problem (Pass@K-style workflows).
-
-2. **Static combine-and-run (best for Pass@1 benchmarking)**  
+1. **Static combine-and-run (best for Pass@1 benchmarking)**  
    - Use `combine-answer-and-setup.py` to generate a single `eval-<timestamp>/` from one answer per problem, then run it with `run-answers*.sh`.  
    - This is the simplest, most stable path for one-shot (Pass@1) evaluations of a fixed benchmark submission.
+
+2. **Checkpointed assessment (best for Pass@K or many retries) -- Work in Progress**  
+   - Build checkpoints with `create_checkpoint.py`, then evaluate with `assess_answer.py --batch-run-dir ...` using the generated manifest.  
+   - This amortizes HOL Light startup and loading costs across many candidate answers, which is especially effective when you are testing multiple attempts per problem (Pass@K-style workflows).
 
 ### Retrieve problems
 ```
