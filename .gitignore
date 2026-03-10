@@ -4,10 +4,10 @@ toplevel-thms/
 objfiles/arm/
 objfiles/x86/
 ml_files*/
-problems*.json
+*.json
 problems*/
 eval-*
-log-eval-*
-*.json
+log*
+*.jsonl
 *.csv
 *.txt
