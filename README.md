@@ -38,6 +38,7 @@ python3 retrieve-problem.py retrieve --outputdir workdir --csv problems.csv --cs
 # 4. Evaluate answers
 python3 retrieve-problem.py retrieve --outputdir workdir
 #    Place each answer in workdir/<problem-id>/answer.txt
+#    You can use answer_csv_format.py
 python3 combine-answer-and-setup.py workdir 8
 ./run-answers.sh eval-<timestamp> 8
 python3 collect-verdicts.py eval-<timestamp> results.csv
