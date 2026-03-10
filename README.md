@@ -66,8 +66,6 @@ See [GUIDE.md](GUIDE.md) for detailed instructions, checkpointed assessment (Pas
   - `toplevel-thms/<arch>/` theorem metadata and inline `.ml`.
   - `trace-logs/<arch>/` (only if you later run `make run_proofs -j<cores>` inside `s2n-bignum/<arch>`).
   - `objfiles/<arch>/` object files copied from the build.
-- Traces are optional; run `(cd s2n-bignum/<arch> && make run_proofs -j<cores>)` if you need `trace-logs/<arch>/`.
-- Problems differ by architecture; merge `toplevel-thms/` and `objfiles/` if you want a combined corpus.
 
 ### 2. Generate the problem set
 ```
@@ -119,7 +117,9 @@ Creates `eval-<timestamp>/`, runs syntax checks (`synchk.sh`), and reuses `templ
 ./run-answers-bytecode.sh eval-<timestamp> <cores>
 ```
 Per-problem compile/run logs live next to each generated `.ml` inside `eval-<timestamp>/`.
-Edit `timeouts.json` to adjust limits.
+Edit `timeouts.json` to adjust limits, depending on how good/bad your proofs are; the compute requirements will vary.
+We suggest conservative parallelism numbers.
+Repeated eval runs take up lots of disk space. Please be mindful.
 
 ### Collect verdicts
 ```
