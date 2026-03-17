@@ -145,8 +145,8 @@ python3 collect-verdicts.py eval-<timestamp> results.csv
 - `template-cache.json` — cache of template-to-problem mappings; safe to delete when layouts change.
 - `runs/` — created for when you execute workflows that emit answers/evaluations (not versioned).
 
-##Citation
-The associated paper for PutnamBench is available here [s2n-bignum-bench](https://arxiv.org/pdf/2603.14628v1). Please consider including the following citation if you find this benchmark useful for your evaluation efforts.
+## Citation
+The associated paper for s2n-bignum-bench is available here: [paper](https://arxiv.org/pdf/2603.14628v1). Please consider including the following citation if you find this benchmark useful for your evaluation efforts.
 ```
 @misc{rao2026s2nbignumbenchpracticalbenchmarkevaluating,
       title={s2n-bignum-bench: A practical benchmark for evaluating low-level code reasoning of LLMs}, 
