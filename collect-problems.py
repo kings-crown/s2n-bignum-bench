@@ -45,8 +45,9 @@ def adjust_line_col_nums(
 ) -> tuple[int, int]:
   """Normalise 1-based line/column pairs so the column is in range for that line."""
 
+  if linenum_end > len(lines):
+    raise ValueError(f"linenum_end {linenum_end} exceeds file length {len(lines)}")
   while True:
-    assert linenum_end <= len(lines)
     current_line = lines[linenum_end - 1]
     if colnum_end > len(current_line):
       colnum_end -= len(current_line)
@@ -75,7 +76,9 @@ def extract_string(
     if linenum + 1 == linenum_end:
       txt += current_line[colnum:colnum_end]
       break
-    assert linenum < linenum_end
+    if linenum >= linenum_end:
+      raise ValueError(
+          f"invalid span: start ({linenum_start},{colnum_start}) >= end ({linenum_end},{colnum_end})")
     txt += current_line[colnum:]
     colnum = 0
     linenum += 1
@@ -131,7 +134,7 @@ def categorize(thm_name: str, goal: str, proof: str, toplevel_dir: str) -> tuple
       return False, "functional_correctness_arm"
     if toplevel_dir == "x86":
       return False, "functional_correctness_x86"
-    assert False, f"neither arm nor x86: {toplevel_dir}"
+    return True, f"unknown_arch:{toplevel_dir}"
 
   if contains_anykw(
       [
@@ -184,7 +187,9 @@ def process_json(
   """Populate the global problem table and emit CHEAT_TAC versions of proofs."""
 
   n = len(json_data_nolinenum)
-  assert n == len(json_data)
+  if n != len(json_data):
+    raise ValueError(
+        f"mismatched JSON lengths: nolinenum={n}, with linenum={len(json_data)} for {mlfile_path}")
 
   # Read the whole file.
   with open(mlfile_path, encoding="utf-8") as ml_file:
@@ -243,7 +248,9 @@ def process_json(
   # Build the problem set, with the adjusted line numbers after CHEAT_TAC!
   for idx, itm in enumerate(json_data_nolinenum):
     thm_name = itm["theorem_name"]
-    assert thm_name == json_data[idx]["theorem_name"]
+    if thm_name != json_data[idx].get("theorem_name"):
+      raise ValueError(
+          f"theorem name mismatch at index {idx}: nolinenum={thm_name!r}, with-linenum={json_data[idx].get('theorem_name')!r}")
 
     # The path of the source .ml file that includes this theorem, before inlining.
     file_fullpath = json_data[idx]["filename"]
@@ -263,7 +270,8 @@ def process_json(
     toplevel_dir = get_toplevel_dir(file_fullpath)
     _, filename = os.path.split(file_fullpath)
     # strip ".ml"
-    assert(filename.endswith(".ml")), filename
+    if not filename.endswith(".ml"):
+      raise ValueError(f"expected .ml filename, got {filename!r}")
     filename = filename.removesuffix(".ml")
 
     # The stable identifier for this problem: {arch}.{filename}.{theorem_name}.
@@ -288,10 +296,9 @@ def process_json(
       existing_key = _query_to_key[normalised_query]
       line_shift = line_shifts[idx]
       linenum_in_cheat_ml = itm["toplevel_theorem_linenum_start"] - line_shift
-      # existing_key is always valid: _query_to_key is only populated when
-      # a problem is inserted into `problems`, and entries are never removed.
-      assert existing_key in problems, \
-          f"_query_to_key points to {existing_key!r} which is not in problems"
+      # existing_key should always be valid: populated only when a problem is inserted.
+      if existing_key not in problems:
+        raise KeyError(f"_query_to_key points to missing key {existing_key!r}")
       existing_arch = existing_key.split('.')[0]
       if arch == existing_arch or existing_arch == 'common':
         problems[existing_key]["inlined_locations"].append(
