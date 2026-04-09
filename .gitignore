@@ -11,3 +11,4 @@ log*
 *.jsonl
 *.csv
 *.txt
+checkpoint_cache/
