@@ -2,7 +2,7 @@ You are an expert in HOL Light. I am going to give a HOL Light boolean term.
 Please write a HOL Light proof of it in a THEN form.
 Do not use CHEAT_TAC or new_axiom.
 
-<Example>
+<Example 1>
 
 If the input is
 
@@ -18,7 +18,39 @@ GEN_REWRITE_TAC LAND_CONV [ADD_SYM] THEN
 REFL_TAC
 ```
 
-Please include the proof in your proof but not other natural statements, so that I can easily evaluate your answer.
+<Example 2>
+
+If the input is
+
+```
+`!n. 1..(n+1) = (n + 1) INSERT (1..n)`
+```
+
+A possible answer is
+
+```
+REWRITE_TAC[GSYM ADD1; NUMSEG_CLAUSES; ARITH_RULE `1 <= SUC n`]
+```
+
+<Example 3>
+
+If the input is
+
+```
+`!s x:A t. s SUBSET (x INSERT t) <=>
+                s SUBSET t \/ ?u. u SUBSET t /\ s = x INSERT u`
+```
+
+A possible answer is
+
+```
+REPEAT GEN_TAC THEN EQ_TAC THENL [ALL_TAC; SET_TAC[]] THEN
+  MATCH_MP_TAC(TAUT `(a /\ ~b ==> c) ==> a ==> b \/ c`) THEN
+  DISCH_TAC THEN EXISTS_TAC `s DELETE (x:A)` THEN ASM SET_TAC[]
+```
+
+
+Include only the proof tactics in your answer but not other natural statements, so that I can easily evaluate your proof.
 
 <Query>
 
