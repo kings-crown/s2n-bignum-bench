@@ -54,7 +54,7 @@ if [ ! -d hol-light ]; then
   git clone https://github.com/jrh13/hol-light.git
 fi
 cd hol-light
-git checkout 0a5e935c976d1ff780906c23b8f82939189844e5
+git checkout e8944de23c0882b83bbbcd828ed1cf56d3a62b90
 
 
 make switch-5
@@ -86,7 +86,7 @@ if [ ! -d s2n-bignum ]; then
   git clone https://github.com/kings-crown/s2n-bignum.git
 fi
 cd s2n-bignum
-git checkout 680168466758c95b3a39c35a2c3e831422b87c13
+git checkout c7f0988c7660bc3d182cbc4380507b620c2a82f1
 
 
 # A. Prepare object files
