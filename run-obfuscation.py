@@ -68,7 +68,9 @@ let s2n_bignum_bench_print_obfuscated_query (t:term) (output_txt_path:string) =
 def write_query(f, problem_name, output_path):
   query = problems[problem_name]["query"]
 
-  f.write(f's2n_bignum_bench_print_obfuscated_query {query} "{output_path}";;\n\n')
+  # Wrap query in parentheses so function-application queries remain a single argument.
+  # Some theorems don't necessarily start with the backtick-delimited, helps resove parsing issues.
+  f.write(f's2n_bignum_bench_print_obfuscated_query ({query}) "{output_path}";;\n\n')
 
 def obfuscate(num_cores):
   timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
