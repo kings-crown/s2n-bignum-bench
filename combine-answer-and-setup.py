@@ -311,10 +311,13 @@ if __name__ == '__main__':
 
     with open(answ_path, "r", encoding='utf-8') as answer_file:
       raw = answer_file.read()
-      # Strip markdown code fences (```hol, ```ocaml, etc.) if present
-      m = re.match(r'\s*```\w*\s?(.*)', raw, re.DOTALL)
-      if m and raw.rstrip().endswith("```"):
-        raw = m.group(1).rstrip()[:-3].strip() + "\n"
+      # Strip markdown code fences (```hol, ```ocaml, etc.). 
+      # Take the contents of the last fenced block if any.
+      # We check for the answer to type-check as HOL Light tactic later
+      # so we don't need to be strict about the fence language tag here.
+      fence_matches = re.findall(r'```[a-zA-Z0-9_+-]*\s*\n(.*?)\n```', raw, re.DOTALL)
+      if fence_matches:
+        raw = fence_matches[-1].strip() + "\n"
       answers[prob_id] = raw
 
   generate_grader(num_cores)
