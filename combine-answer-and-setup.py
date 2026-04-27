@@ -47,8 +47,13 @@ let bench_run (problem_name:string) (query:term) (tac0:unit->tactic)
   let t0 = Unix.gettimeofday () in
   let verdict =
     (try
-      let tac:tactic = tac0 () in
-      let _:thm = s2n_bignum_bench_timed_fun prove (query, tac) timeout in
+      let _:thm =
+        s2n_bignum_bench_timed_fun
+          (fun () ->
+            let tac:tactic = tac0 () in
+            prove(query, tac))
+          ()
+          (timeout + 30) in
       let axioms_after = axioms() in
       if axioms_before = axioms_after then "OK" else "CHEATING"
     with Failure _ -> "FAIL"
