@@ -2,7 +2,7 @@
 
 A practical benchmark for evaluating low-level code reasoning of LLMs through HOL Light tactic synthesis on cryptographic proofs from AWS [s2n-bignum](https://github.com/awslabs/s2n-bignum).
 
-[Paper](https://arxiv.org/pdf/2603.14628) | [Leaderboard](https://kings-crown.github.io/s2n-bignum-leaderboard/) | [GUIDE.md](GUIDE.md)
+[Paper](https://arxiv.org/pdf/2603.14628) | [Leaderboard](https://kings-crown.github.io/s2n-bignum-leaderboard/) | [Dataset-Hugging Face](https://huggingface.co/datasets/kings-crown/s2n-bignum-bench) | [GUIDE.md](GUIDE.md)
 
 ## Quick Start for Challengers
 
