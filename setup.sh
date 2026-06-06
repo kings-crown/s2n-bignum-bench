@@ -54,7 +54,7 @@ if [ ! -d hol-light ]; then
   git clone https://github.com/jrh13/hol-light.git
 fi
 cd hol-light
-git checkout e8944de23c0882b83bbbcd828ed1cf56d3a62b90
+git checkout 5e624214e5233284f654b195d212eeeaaf237cda
 
 
 make switch-5
