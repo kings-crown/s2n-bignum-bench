@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -36,9 +37,54 @@ let s2n_bignum_bench_remove_invented_types: term -> term =
         let _ = newvar_id := !newvar_id + 1 in
         inst [newty, invty] t)
       invtys t;;
-      
-let s2n_bignum_bench_print_obfuscated_query (t:term) (output_txt_path:string) =
-  let t' = s2n_bignum_bench_remove_invented_types t in
+
+let s2n_bignum_bench_rename_const_collisions: term -> term =
+  fun t ->
+    (* A bound-variable name that ALSO parses as a constant (e.g. the ARM
+       register Q1 = QREG 1) is reread as that constant on parse, breaking the
+       round-trip with a typechecking error. Rename ONLY such binders to fresh
+       names that are neither constants nor free in t. Semantically identity. *)
+    let taken nm =
+      mem nm (map (fun v -> fst (dest_var v)) (frees t)) || can get_const_type nm in
+    let counter = ref 0 in
+    let rec fresh ty =
+      let nm = "v" ^ string_of_int !counter in
+      let _ = counter := !counter + 1 in
+      if taken nm then fresh ty else mk_var (nm, ty) in
+    let rec rn env t =
+      match t with
+      | Var (_, _)   -> (try assoc t env with Failure _ -> t)
+      | Const (_, _) -> t
+      | Comb (f, x)  -> mk_comb (rn env f, rn env x)
+      | Abs (bv, body) ->
+          if can get_const_type (fst (dest_var bv))
+          then let nv = fresh (type_of bv) in mk_abs (nv, rn ((bv,nv)::env) body)
+          else mk_abs (bv, rn env body) in
+    rn [] t;;
+
+let s2n_bignum_bench_alpha_rename (seed:int): term -> term =
+  fun t ->
+    (* names already free in t -- never reuse one as a fresh bound name (capture guard) *)
+    let avoid = setify (map (fun v -> fst (dest_var v)) (frees t)) in
+    let counter = ref seed in
+    let rec fresh ty =
+      let nm = "v" ^ string_of_int !counter in
+      counter := !counter + 1;
+      if mem nm avoid then fresh ty else mk_var (nm, ty) in
+    let rec rn env t =
+      match t with
+      | Var (_, _)   -> (try assoc t env with Failure _ -> t)
+      | Const (_, _) -> t
+      | Comb (f, x)  -> mk_comb (rn env f, rn env x)
+      | Abs (bv, body) ->
+          let nv = fresh (type_of bv) in
+          mk_abs (nv, rn ((bv,nv)::env) body) in
+    rn [] t;;
+
+let s2n_bignum_bench_print_obfuscated_query (tier:int) (seed:int) (t:term) (output_txt_path:string) =
+  let t1 = s2n_bignum_bench_rename_const_collisions
+             (s2n_bignum_bench_remove_invented_types t) in
+  let t' = if tier >= 2 then s2n_bignum_bench_alpha_rename seed t1 else t1 in
   let orgval = !print_types_of_subterms in
   let _ = print_types_of_subterms := 2 in
   let str_t' = string_of_term t' in
@@ -46,7 +92,10 @@ let s2n_bignum_bench_print_obfuscated_query (t:term) (output_txt_path:string) =
     let oc = open_out output_txt_path in
     (try
       let t'' = parse_term str_t' in
-      if t'' <> t' then
+      (* Accept alpha-equivalence, not syntactic identity: GSPEC comprehensions
+         and _MATCH desugar through generated bound variables (GEN%PVAR%NNNN),
+         which the parser regenerates with fresh gensym names on re-read. *)
+      if not (aconv t'' t') then
        (output_string oc "FAIL: parsing roundtrip: ";
         output_string oc str_t')
       else
@@ -65,17 +114,18 @@ let s2n_bignum_bench_print_obfuscated_query (t:term) (output_txt_path:string) =
   print_types_of_subterms := orgval;;
 """
 
-def write_query(f, problem_name, output_path):
+def write_query(f, problem_name, output_path, tier):
   query = problems[problem_name]["query"]
 
   # Wrap query in parentheses so function-application queries remain a single argument.
   # Some theorems don't necessarily start with the backtick-delimited, helps resove parsing issues.
-  f.write(f's2n_bignum_bench_print_obfuscated_query ({query}) "{output_path}";;\n\n')
+  seed = int(hashlib.sha1(problem_name.encode()).hexdigest(), 16) % 100000
+  f.write(f's2n_bignum_bench_print_obfuscated_query {tier} {seed} ({query}) "{output_path}";;\n\n')
 
-def obfuscate(num_cores):
+def obfuscate(num_cores, tier):
   timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
   compiledir = f"obfus-compile-{timestamp}"
-  rundir = f"obfus-run-{timestamp}"
+  rundir = f"obfus-run-{timestamp}-t{tier}"
   os.makedirs(compiledir)
   os.makedirs(rundir)
 
@@ -105,7 +155,7 @@ def obfuscate(num_cores):
 
         if i == 0:
           wf.write(obfuscator_code)
-        write_query(wf, prob_id, os.path.join("..", os.path.join(rundir, prob_id + ".obfus.txt")))
+        write_query(wf, prob_id, os.path.join("..", os.path.join(rundir, prob_id + ".obfus.txt")), tier)
         prevline = linenum
 
   # Now compile & run them.
@@ -123,18 +173,25 @@ def obfuscate(num_cores):
 
 
 if __name__ == '__main__':
-  if len(sys.argv) != 4:
-    print("python3 run-obfuscation.py <problems.json (input)> <num cores> <problems.json (output)>")
+  argv = sys.argv[1:]
+  tier = 1
+  if '--tier' in argv:
+    i = argv.index('--tier')
+    tier = int(argv[i + 1])
+    del argv[i:i + 2]
+
+  if len(argv) != 3:
+    print("python3 run-obfuscation.py [--tier N] <problems.json (input)> <num cores> <problems.json (output)>")
     exit(1)
 
-  with open(sys.argv[1], "r") as f:
+  with open(argv[0], "r") as f:
     problems = json.load(f)
 
-  num_cores = int(sys.argv[2])
+  num_cores = int(argv[1])
 
   # Run obfuscation. If the resulting directory already exists from previous run,
   # you can omit this invocation.
-  obfus_run_dir = obfuscate(num_cores)
+  obfus_run_dir = obfuscate(num_cores, tier)
 
   # check obfuscation results
   obfus_problems = []
@@ -168,5 +225,5 @@ if __name__ == '__main__':
 
   # Dump the obfuscated one
   print(f"Total {obfus_cnt} problems among {len(problems)} successfully obfuscated")
-  with open(sys.argv[3], "w") as wf:
+  with open(argv[2], "w") as wf:
     json.dump(problems, wf, indent=2)
