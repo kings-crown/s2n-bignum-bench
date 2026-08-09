@@ -2,6 +2,7 @@
 set -euo pipefail
 
 reuse_existing=false
+skip_hol=false
 
 while [[ "$#" -gt 0 && "$1" == --* ]]; do
   case "$1" in
@@ -9,16 +10,20 @@ while [[ "$#" -gt 0 && "$1" == --* ]]; do
       reuse_existing=true
       shift
       ;;
+    --skip-hol)
+      skip_hol=true
+      shift
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "setup.sh [--reuse] <arch(arm or x86)> <number of cores>"
+      echo "setup.sh [--reuse] [--skip-hol] <arch(arm or x86)> <number of cores>"
       exit 1
       ;;
   esac
 done
 
 if [ "$#" -ne 2 ]; then
-  echo "setup.sh [--reuse] <arch(arm or x86)> <number of cores>"
+  echo "setup.sh [--reuse] [--skip-hol] <arch(arm or x86)> <number of cores>"
   exit 1
 fi
 
@@ -42,35 +47,64 @@ OBJFILES_DIR="${SCRIPT_DIR}/objfiles/${arch}"
 ### Setup HOL Light
 
 
-echo "Building HOL Light..."
+if [ "$skip_hol" = "true" ]; then
 
-if [ "$reuse_existing" != "true" ]; then
-  rm -rf hol-light
-elif [ -d hol-light ]; then
-  echo "Reusing existing hol-light checkout"
+  echo "Skipping HOL Light build; reusing ${SCRIPT_DIR}/hol-light"
+
+  if [ ! -d hol-light ]; then
+    echo "--skip-hol was given but ${SCRIPT_DIR}/hol-light does not exist" >&2
+    exit 1
+  fi
+  cd hol-light
+
+  # The opam switch is directory-local and registered under the checkout's real
+  # path, so resolve symlinks before selecting it.
+  eval $(opam env --switch="$(pwd -P)" --set-switch)
+  export HOLLIGHT_USE_MODULE=1
+  export HOLLIGHT_DIR=`pwd`
+
+  # build-proof.sh (after s2n-bignum.patch) shells out to TacticTrace, so a
+  # skipped build still has to point TACLOGGER_DIR at an already-built tree.
+  if [ ! -x TacticTrace/tracer ]; then
+    echo "TacticTrace is not built in ${HOLLIGHT_DIR}; rerun without --skip-hol" >&2
+    exit 1
+  fi
+  export TACLOGGER_DIR="${HOLLIGHT_DIR}/TacticTrace"
+  cd ..
+
+else
+
+  echo "Building HOL Light..."
+
+  if [ "$reuse_existing" != "true" ]; then
+    rm -rf hol-light
+  elif [ -d hol-light ]; then
+    echo "Reusing existing hol-light checkout"
+  fi
+
+  if [ ! -d hol-light ]; then
+    git clone https://github.com/jrh13/hol-light.git
+  fi
+  cd hol-light
+  git checkout 5e624214e5233284f654b195d212eeeaaf237cda
+
+
+  make switch-5
+  eval $(opam env --set-switch)
+  export HOLLIGHT_USE_MODULE=1
+  make
+  export HOLLIGHT_DIR=`pwd`
+
+  echo "Building TacticTrace of HOL Light..."
+
+  cd TacticTrace
+  make
+
+  export TACLOGGER_DIR=`pwd`
+  ./build-hol-kernel.sh
+  cd ../..
+
 fi
-
-if [ ! -d hol-light ]; then
-  git clone https://github.com/jrh13/hol-light.git
-fi
-cd hol-light
-git checkout 5e624214e5233284f654b195d212eeeaaf237cda
-
-
-make switch-5
-eval $(opam env --set-switch)
-export HOLLIGHT_USE_MODULE=1
-make
-export HOLLIGHT_DIR=`pwd`
-
-echo "Building TacticTrace of HOL Light..."
-
-cd TacticTrace
-make
-
-export TACLOGGER_DIR=`pwd`
-./build-hol-kernel.sh
-cd ../..
 
 ### Setup s2n-bignum and collect top-level theorems
 
@@ -86,7 +120,7 @@ if [ ! -d s2n-bignum ]; then
   git clone https://github.com/kings-crown/s2n-bignum.git
 fi
 cd s2n-bignum
-git checkout c7f0988c7660bc3d182cbc4380507b620c2a82f1
+git checkout 5e0fc782ae6d587c2ae40faf2c2c4d0b637e6240
 
 
 # A. Prepare object files
