@@ -36,8 +36,8 @@
 4. `<arch>` must be `arm` or `x86`; build products land under matching subdirectories.
 5. `<num-cores>` controls parallelism for `make`. Aim for `RAM_in_GB / 6` to avoid swapping.
 6. Outputs:
-    - `hol-light/` pinned to commit `0a5e9…` with TacticTrace built.
-    - `s2n-bignum/` pinned to `002fdb…` with proof artefacts.
+    - `hol-light/` pinned to commit `5e624…` with TacticTrace built. [WIP - TacticTrace is being migrated] 
+    - `s2n-bignum/` pinned to `5e0fc7…` with proof artefacts.
     - `toplevel-thms/<arch>/` containing theorem dumps and inline `.ml` files.
    - `trace-logs/<arch>/` containing per-theorem trace dumps only if you run `make run_proofs -j<num-cores>` inside `s2n-bignum/<arch>`.
    - `objfiles/<arch>/` populated with object files copied from s2n-bignum builds.
