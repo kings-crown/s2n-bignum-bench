@@ -56,12 +56,13 @@ See [GUIDE.md](GUIDE.md) for detailed instructions, checkpointed assessment (Pas
 
 ### 1. Build HOL Light, s2n-bignum, and collect top-level theorems
 ```
-./setup.sh [--reuse] <arch(arm|x86)> <cores>
+./setup.sh [--reuse] [--skip-hol] <arch(arm|x86)> <cores>
 ```
-- `--reuse` keeps existing `hol-light/` and `s2n-bignum/` if present.
+- `--reuse` keeps existing `hol-light/`, its separate `TacticTrace/` checkout, and `s2n-bignum/` if present. Leftovers from bundled TacticTrace are saved under `hol-light/TacticTrace.bundled.*/` before cloning the separate repository.
+- `--skip-hol` requires already-built HOL Light and TacticTrace, including the generated kernel wrappers; omit it for the first setup after updating the pinned revisions.
 - `<cores>`: each proof can use ~5 GB RAM; a safe rule is `RAM_GB / 6`.
 - Outputs:
-  - `hol-light/` with TacticTrace built.
+  - `hol-light/` with the separately pinned [TacticTrace](https://github.com/hol-light-family/TacticTrace) repository built in `hol-light/TacticTrace/`.
   - `s2n-bignum/` with the chosen architecture’s artefacts.
   - `toplevel-thms/<arch>/` theorem metadata and inline `.ml`.
   - `trace-logs/<arch>/` (only if you later run `make run_proofs -j<cores>` inside `s2n-bignum/<arch>`).
@@ -80,6 +81,17 @@ mv problems.json problems-unobfuscated.json
 mv problems-obfuscated.json problems.json
 ```
 - On failure, the script reports the template path that failed to compile.
+
+After a failed or interrupted batch has finished, resume with the same input
+file and tier, using its existing run directory:
+
+```bash
+python3 run-obfuscation.py --resume obfus-run-<timestamp>-t1 problems.json <cores> problems-obfuscated.json
+```
+
+Successful query files are preserved; only missing, empty, or failed queries
+are regenerated. If all queries are complete, this only writes the output JSON.
+Do not resume while the original batch is still running.
 
 ## Usage
 

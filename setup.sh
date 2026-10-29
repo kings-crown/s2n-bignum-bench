@@ -43,6 +43,9 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 OBJFILES_DIR="${SCRIPT_DIR}/objfiles/${arch}"
+TACTICTRACE_COMMIT=7ea3808cc28258113fd41ef9d860dbfe7691c190
+S2N_BIGNUM_REPO=https://github.com/kings-crown/s2n-bignum.git
+S2N_BIGNUM_COMMIT=5e0fc782ae6d587c2ae40faf2c2c4d0b637e6240
 
 ### Setup HOL Light
 
@@ -65,11 +68,13 @@ if [ "$skip_hol" = "true" ]; then
 
   # build-proof.sh (after s2n-bignum.patch) shells out to TacticTrace, so a
   # skipped build still has to point TACLOGGER_DIR at an already-built tree.
-  if [ ! -x TacticTrace/tracer ]; then
-    echo "TacticTrace is not built in ${HOLLIGHT_DIR}; rerun without --skip-hol" >&2
+  export TACLOGGER_DIR="${HOLLIGHT_DIR}/TacticTrace"
+  if [ ! -x "${TACLOGGER_DIR}/tracer" ] ||
+     [ ! -s "${TACLOGGER_DIR}/kernel_wrapper.ml" ] ||
+     [ ! -s "${TACLOGGER_DIR}/hol_lib_inlined.mli" ]; then
+    echo "TacticTrace is not fully built in ${TACLOGGER_DIR}; rerun with --reuse and without --skip-hol" >&2
     exit 1
   fi
-  export TACLOGGER_DIR="${HOLLIGHT_DIR}/TacticTrace"
   cd ..
 
 else
@@ -86,7 +91,7 @@ else
     git clone https://github.com/jrh13/hol-light.git
   fi
   cd hol-light
-  git checkout 5e624214e5233284f654b195d212eeeaaf237cda
+  git checkout d30e8239887b2348a063f82232a864de1cc2df15
 
 
   make switch-5
@@ -95,12 +100,28 @@ else
   make
   export HOLLIGHT_DIR=`pwd`
 
-  echo "Building TacticTrace of HOL Light..."
+  echo "Building TacticTrace..."
 
+  # TacticTrace is now a separate repository, but its scripts still require
+  # it to live at ${HOLLIGHT_DIR}/TacticTrace.
+  if [ -d TacticTrace ] && [ ! -e TacticTrace/.git ]; then
+    # --reuse may leave generated files from the former bundled TacticTrace.
+    # Preserve them before cloning the standalone repository.
+    tactictrace_backup="$(mktemp -d "${HOLLIGHT_DIR}/TacticTrace.bundled.XXXXXX")"
+    mv TacticTrace "${tactictrace_backup}/TacticTrace"
+    echo "Saved bundled TacticTrace files in ${tactictrace_backup}/TacticTrace"
+  fi
+  if [ ! -d TacticTrace ]; then
+    git clone https://github.com/hol-light-family/TacticTrace.git TacticTrace
+  fi
   cd TacticTrace
-  make
+  if ! git cat-file -e "${TACTICTRACE_COMMIT}^{commit}" 2>/dev/null; then
+    git fetch origin "$TACTICTRACE_COMMIT"
+  fi
+  git checkout "$TACTICTRACE_COMMIT"
 
   export TACLOGGER_DIR=`pwd`
+  # This script cleans and rebuilds the tracer before generating the wrappers.
   ./build-hol-kernel.sh
   cd ../..
 
@@ -117,10 +138,14 @@ elif [ -d s2n-bignum ]; then
 fi
 
 if [ ! -d s2n-bignum ]; then
-  git clone https://github.com/kings-crown/s2n-bignum.git
+  git clone "$S2N_BIGNUM_REPO" s2n-bignum
 fi
 cd s2n-bignum
-git checkout 5e0fc782ae6d587c2ae40faf2c2c4d0b637e6240
+# Reused checkouts may not contain the pinned revision.
+if ! git cat-file -e "${S2N_BIGNUM_COMMIT}^{commit}" 2>/dev/null; then
+  git fetch "$S2N_BIGNUM_REPO" "$S2N_BIGNUM_COMMIT"
+fi
+git checkout "$S2N_BIGNUM_COMMIT"
 
 
 # A. Prepare object files

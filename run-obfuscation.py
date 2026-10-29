@@ -42,10 +42,15 @@ let s2n_bignum_bench_rename_const_collisions: term -> term =
   fun t ->
     (* A bound-variable name that ALSO parses as a constant (e.g. the ARM
        register Q1 = QREG 1) is reread as that constant on parse, breaking the
-       round-trip with a typechecking error. Rename ONLY such binders to fresh
-       names that are neither constants nor free in t. Semantically identity. *)
+       round-trip with a typechecking error. Names ending in underscore also
+       need renaming: the typed printer emits (_:ty), but HOL lexes _: as one
+       identifier. This includes wildcard binders in match expressions.
+       Avoid all existing variable names, including unchanged inner binders,
+       so fresh names cannot capture or be captured. *)
+    let avoid = map (fun v -> fst (dest_var v)) (variables t) in
     let taken nm =
-      mem nm (map (fun v -> fst (dest_var v)) (frees t)) || can get_const_type nm in
+      mem nm avoid || can get_const_type nm ||
+      List.exists (fun (alias,_) -> alias = nm) !the_interface in
     let counter = ref 0 in
     let rec fresh ty =
       let nm = "v" ^ string_of_int !counter in
@@ -57,7 +62,8 @@ let s2n_bignum_bench_rename_const_collisions: term -> term =
       | Const (_, _) -> t
       | Comb (f, x)  -> mk_comb (rn env f, rn env x)
       | Abs (bv, body) ->
-          if can get_const_type (fst (dest_var bv))
+          let name = fst (dest_var bv) in
+          if String.ends_with ~suffix:"_" name || can get_const_type name
           then let nv = fresh (type_of bv) in mk_abs (nv, rn ((bv,nv)::env) body)
           else mk_abs (bv, rn env body) in
     rn [] t;;
@@ -120,23 +126,53 @@ def write_query(f, problem_name, output_path, tier):
   # Wrap query in parentheses so function-application queries remain a single argument.
   # Some theorems don't necessarily start with the backtick-delimited, helps resove parsing issues.
   seed = int(hashlib.sha1(problem_name.encode()).hexdigest(), 16) % 100000
-  f.write(f's2n_bignum_bench_print_obfuscated_query {tier} {seed} ({query}) "{output_path}";;\n\n')
+  # A new structure binding also separates us from preceding declarations
+  # that legitimately omit ;;. A bare call can become their next argument.
+  f.write(f'let () = s2n_bignum_bench_print_obfuscated_query {tier} {seed} ({query}) "{output_path}";;\n\n')
 
-def obfuscate(num_cores, tier):
-  timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-  compiledir = f"obfus-compile-{timestamp}"
-  rundir = f"obfus-run-{timestamp}-t{tier}"
-  os.makedirs(compiledir)
-  os.makedirs(rundir)
+def valid_obfuscated_query(path):
+  try:
+    text = Path(path).read_text().strip()
+  except FileNotFoundError:
+    return False
+  return bool(text) and text.startswith("`") and text.endswith("`")
+
+
+def obfuscate(num_cores, tier, resume_dir=None):
+  rundir = resume_dir
+  if rundir is not None:
+    if not Path(rundir).is_dir():
+      raise ValueError(f"Resume directory does not exist: {rundir}")
+    _, separator, saved_tier = Path(rundir).name.rpartition("-t")
+    if separator and saved_tier.isdigit() and int(saved_tier) != tier:
+      raise ValueError(f"Resume directory is tier {saved_tier}, but --tier is {tier}")
 
   templates = dict()
 
   for prob_id in problems:
+    if rundir is not None and valid_obfuscated_query(
+        Path(rundir) / (prob_id + ".obfus.txt")):
+      continue
     file_path, linenum = problems[prob_id]["inlined_locations"][0]
     if file_path not in templates:
       templates[file_path] = [(prob_id, linenum)]
     else:
       templates[file_path].append((prob_id, linenum))
+
+  if rundir is not None and not templates:
+    print(f"All queries already stored at {rundir}; skipping compilation")
+    return rundir
+
+  timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+  if rundir is None:
+    rundir = f"obfus-run-{timestamp}-t{tier}"
+    os.makedirs(rundir)
+    compiledir = f"obfus-compile-{timestamp}"
+  else:
+    # Keep completed sources/logs untouched and give the runner only retries.
+    retry_stamp = datetime.now().strftime('%f')
+    compiledir = f"obfus-compile-{timestamp}-resume-{retry_stamp}"
+  os.makedirs(compiledir)
 
   print(f"Writing obfuscated query printer to {compiledir}")
 
@@ -147,6 +183,11 @@ def obfuscate(num_cores, tier):
       lines = list(f.readlines())
 
     with open(os.path.join(compiledir, t.replace("/", "_")), "w") as wf:
+      # These printers run for their initialization effects and export nothing.
+      # A truncated template can leave weak OCaml types that later uses in the
+      # full source would specialize. Keep those bindings private so they do
+      # not escape through the compiled module's interface.
+      wf.write("module Obfuscated_queries : sig end = struct\n")
       prevline = 0
       for i in range(0, len(templates[t])):
         prob_id, linenum = templates[t][i]
@@ -157,6 +198,7 @@ def obfuscate(num_cores, tier):
           wf.write(obfuscator_code)
         write_query(wf, prob_id, os.path.join("..", os.path.join(rundir, prob_id + ".obfus.txt")), tier)
         prevline = linenum
+      wf.write("\nend;;\n")
 
   # Now compile & run them.
   # If the native compiler is used, the assembler raises a weird error message about the distance
@@ -173,34 +215,30 @@ def obfuscate(num_cores, tier):
 
 
 if __name__ == '__main__':
-  argv = sys.argv[1:]
-  tier = 1
-  if '--tier' in argv:
-    i = argv.index('--tier')
-    tier = int(argv[i + 1])
-    del argv[i:i + 2]
+  parser = argparse.ArgumentParser(description="Obfuscate benchmark queries")
+  parser.add_argument('--tier', type=int, default=1)
+  parser.add_argument('--resume', metavar='RUN_DIR',
+                      help="Reuse completed queries; use the same input and tier after the original run finishes")
+  parser.add_argument('input', help="Input problems.json")
+  parser.add_argument('num_cores', type=int)
+  parser.add_argument('output', help="Output problems.json")
+  args = parser.parse_args()
+  if args.num_cores < 1:
+    parser.error("num_cores must be positive")
 
-  if len(argv) != 3:
-    print("python3 run-obfuscation.py [--tier N] <problems.json (input)> <num cores> <problems.json (output)>")
-    exit(1)
-
-  with open(argv[0], "r") as f:
+  with open(args.input, "r") as f:
     problems = json.load(f)
 
-  num_cores = int(argv[1])
-
-  # Run obfuscation. If the resulting directory already exists from previous run,
-  # you can omit this invocation.
-  obfus_run_dir = obfuscate(num_cores, tier)
+  try:
+    obfus_run_dir = obfuscate(args.num_cores, args.tier, args.resume)
+  except ValueError as error:
+    parser.error(str(error))
 
   # check obfuscation results
-  obfus_problems = []
-  for f in os.listdir(obfus_run_dir):
-    obfus_problems.append(f.removesuffix(".obfus.txt"))
-
   has_unobfus_res = False
   for p in problems:
-    if p not in obfus_problems:
+    result_path = Path(obfus_run_dir) / (p + ".obfus.txt")
+    if not result_path.is_file() or not result_path.read_text().strip():
       print(f"Error: Problem {p} not obfuscated!!")
       locations = problems[p].get("inlined_locations", [])
       fail_source = locations[0][0] if locations else "unknown template"
@@ -212,11 +250,11 @@ if __name__ == '__main__':
 
   # Update problem
   obfus_cnt = 0
-  for fname in os.listdir(obfus_run_dir):
-    probname = fname.removesuffix(".obfus.txt")
-    with open(os.path.join(obfus_run_dir, fname), "r") as f:
+  for probname in problems:
+    result_path = Path(obfus_run_dir) / (probname + ".obfus.txt")
+    with open(result_path, "r") as f:
       ls = list(f.readlines())
-      if "FAIL" in ls[0]:
+      if not valid_obfuscated_query(result_path):
         print(f"Note: obfuscation of {probname} failed")
         continue
 
@@ -225,5 +263,5 @@ if __name__ == '__main__':
 
   # Dump the obfuscated one
   print(f"Total {obfus_cnt} problems among {len(problems)} successfully obfuscated")
-  with open(argv[2], "w") as wf:
+  with open(args.output, "w") as wf:
     json.dump(problems, wf, indent=2)

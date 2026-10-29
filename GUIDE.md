@@ -30,14 +30,14 @@
 - `timeouts.json` – per-category timeout overrides used by runners.
 
 ## 4. Initial Setup (`setup.sh`)
-1. From the repo root: `./setup.sh [--reuse] <arch> <num-cores>`.
-2. `--reuse` keeps existing `hol-light/` and `s2n-bignum/` directories; omit for a clean rebuild.
+1. From the repo root: `./setup.sh [--reuse] [--skip-hol] <arch> <num-cores>`.
+2. `--reuse` keeps existing `hol-light/`, its separate `TacticTrace/` checkout, and `s2n-bignum/` directories; omit for a clean rebuild. Bundled TacticTrace leftovers are backed up under `hol-light/TacticTrace.bundled.*/`. `--skip-hol` reuses already-built HOL Light and TacticTrace; omit it after updating the pinned revisions.
 3. Traces are optional. To populate `trace-logs/<arch>/`, run `make run_proofs -j<num-cores>` inside `s2n-bignum/<arch>` after setup finishes.
 4. `<arch>` must be `arm` or `x86`; build products land under matching subdirectories.
 5. `<num-cores>` controls parallelism for `make`. Aim for `RAM_in_GB / 6` to avoid swapping.
 6. Outputs:
-    - `hol-light/` pinned to commit `5e624…` with TacticTrace built. [WIP - TacticTrace is being migrated] 
-    - `s2n-bignum/` pinned to `5e0fc7…` with proof artefacts.
+    - `hol-light/` pinned to commit `d30e823…` with the separate TacticTrace repository pinned to `7ea3808…` and built in `hol-light/TacticTrace/`.
+    - `s2n-bignum/` pinned to `5e0fc782…` with proof artefacts.
     - `toplevel-thms/<arch>/` containing theorem dumps and inline `.ml` files.
    - `trace-logs/<arch>/` containing per-theorem trace dumps only if you run `make run_proofs -j<num-cores>` inside `s2n-bignum/<arch>`.
    - `objfiles/<arch>/` populated with object files copied from s2n-bignum builds.
@@ -92,7 +92,7 @@
 ## 9. Maintenance Tips
 - Remove `template-cache.json` if you change `problems.json` or want to rebuild template portfolios from scratch.
 - The obfuscation step relies on the bytecode runner; ensure `ocamlc` is available within the Hol Light opam switch.
-- Keep `hol-light/` and `s2n-bignum/` at the pinned commits unless you are prepared to refresh `s2n-bignum.patch` and re-verify scripts.
+- Keep `hol-light/`, `hol-light/TacticTrace/`, and `s2n-bignum/` at the pinned commits unless you are prepared to refresh `s2n-bignum.patch` and re-verify scripts.
 
 ## 10. Debugging Checklist
 1. **Setup failures**
